@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "crypto-toolkit-py"
-version = "1.0.0"
+version = "1.0.1"
 description = "Modern Cryptography & Hashing Toolkit - a misuse-resistant, high-level cryptography library for Python"
 readme = "README.md"
 authors = [
