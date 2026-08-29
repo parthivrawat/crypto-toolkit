@@ -1,0 +1,32 @@
+[package]
+name = "modern-crypto-toolkit"
+version = "1.0.0"
+edition = "2021"
+authors = ["Parthiv Rawat <parthiv05022000@gmail.com>"]
+license = "MIT"
+description = "Modern Cryptography & Hashing Toolkit - a misuse-resistant, high-level cryptography library for Rust"
+repository = "https://github.com/parthivrawat/crypto-toolkit"
+homepage = "https://github.com/parthivrawat/crypto-toolkit/tree/main/rust"
+documentation = "https://docs.rs/modern-crypto-toolkit"
+readme = "README.md"
+keywords = ["crypto", "cryptography", "hash", "encryption", "ed25519"]
+categories = ["cryptography"]
+
+[dependencies]
+sha2 = "0.10"
+sha3 = "0.10"
+blake2 = "0.10"
+hmac = "0.12"
+digest = "0.10"
+pbkdf2 = "0.12"
+scrypt = "0.11"
+argon2 = "0.5"
+bcrypt = "0.16"
+aes-gcm = "0.10"
+chacha20poly1305 = "0.10"
+aead = "0.5"
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+rand = "0.8"
+subtle = "2.6"
+base64 = "0.21"
+hex = "0.4"

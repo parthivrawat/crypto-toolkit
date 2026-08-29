@@ -1,0 +1,9 @@
+# Changelog
+
+## 1.0.0 - 2026-08-29
+
+- Initial Rust release
+- Safe hashing (SHA-2, SHA-3, BLAKE2) with HMAC
+- Password hashing and key derivation (Argon2id, scrypt, bcrypt, PBKDF2)
+- AEAD symmetric encryption (AES-256-GCM, ChaCha20-Poly1305)
+- Ed25519 digital signatures

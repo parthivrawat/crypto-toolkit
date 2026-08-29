@@ -1,0 +1,85 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crypto-toolkit-py"
+version = "1.0.0"
+description = "Modern Cryptography & Hashing Toolkit - a misuse-resistant, high-level cryptography library for Python"
+readme = "README.md"
+authors = [
+    {name = "Parthiv Rawat", email = "parthiv05022000@gmail.com"}
+]
+maintainers = [
+    {name = "Parthiv Rawat", email = "parthiv05022000@gmail.com"}
+]
+license = "MIT"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+keywords = [
+    "crypto",
+    "cryptography",
+    "hash",
+    "hashing",
+    "hmac",
+    "password",
+    "encryption",
+    "argon2",
+    "ed25519",
+    "security",
+]
+requires-python = ">=3.8"
+dependencies = []
+
+[project.optional-dependencies]
+crypto = ["cryptography>=43.0.0"]
+argon2 = ["argon2-cffi>=23.1.0"]
+bcrypt = ["bcrypt>=4.0.0"]
+full = ["cryptography>=43.0.0", "argon2-cffi>=23.1.0", "bcrypt>=4.0.0"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/parthivrawat/crypto-toolkit"
+Documentation = "https://github.com/parthivrawat/crypto-toolkit/tree/main/python#readme"
+Repository = "https://github.com/parthivrawat/crypto-toolkit"
+"Bug Tracker" = "https://github.com/parthivrawat/crypto-toolkit/issues"
+Changelog = "https://github.com/parthivrawat/crypto-toolkit/blob/main/python/CHANGELOG.md"
+
+[tool.setuptools]
+packages = ["crypto_toolkit"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+crypto_toolkit = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["test_crypto_toolkit.py"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

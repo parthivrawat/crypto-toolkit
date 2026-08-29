@@ -1,0 +1,70 @@
+{
+  "name": "crypto-toolkit-ts",
+  "version": "1.0.0",
+  "description": "Modern Cryptography & Hashing Toolkit - a misuse-resistant, high-level cryptography library for TypeScript/Node.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "prepublishOnly": "npm run build && npm test",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "crypto",
+    "cryptography",
+    "hash",
+    "hashing",
+    "hmac",
+    "password",
+    "encryption",
+    "ed25519",
+    "security",
+    "typescript"
+  ],
+  "author": {
+    "name": "Parthiv Rawat",
+    "email": "parthiv05022000@gmail.com"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^1.6.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/parthivrawat/crypto-toolkit.git",
+    "directory": "typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/parthivrawat/crypto-toolkit/issues"
+  },
+  "homepage": "https://github.com/parthivrawat/crypto-toolkit/tree/main/typescript#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  }
+}
