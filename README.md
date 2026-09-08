@@ -58,7 +58,8 @@ General guidance:
 - Store and transport the full token/hash string; it carries the algorithm and
   parameters needed for verification.
 - Keep dependencies updated; CI runs `govulncheck`, `pip-audit`,
-  `cargo audit`, and `npm audit` on every commit.
+  `cargo audit`, and `npm audit` on pushes to `main` and pull requests
+  targeting `main`.
 
 ### Reporting Vulnerabilities
 
