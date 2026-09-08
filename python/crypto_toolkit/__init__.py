@@ -15,13 +15,15 @@ from .exceptions import (
     SignatureError,
     VerificationError,
 )
+from .password import HashOptions
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 
 __all__ = [
     "AlgorithmError",
     "CryptoKitError",
     "DecryptionError",
+    "HashOptions",
     "InvalidKeyError",
     "MissingDependencyError",
     "SignatureError",
