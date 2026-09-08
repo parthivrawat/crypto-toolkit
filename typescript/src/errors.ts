@@ -12,4 +12,6 @@ export class CryptoKitError extends Error {
 export class AlgorithmError extends CryptoKitError {}
 export class InvalidKeyError extends CryptoKitError {}
 export class DecryptionError extends CryptoKitError {}
+export class MissingDependencyError extends CryptoKitError {}
+export class VerificationError extends CryptoKitError {}
 export class SignatureError extends CryptoKitError {}
