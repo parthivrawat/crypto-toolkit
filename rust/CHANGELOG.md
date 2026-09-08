@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0 - 2026-09-08
+
+- `password::verify` rejects hashes with empty salt/digest fields
+- `hash::hmac`/`verify_hmac` accept `impl AsRef<[u8]>` (binary keys and messages)
+- `hash`: single `Algorithm` dispatcher; custom `DynDigest` replaced by `digest::DynDigest`
+- Added `HashOptions::validate()`; `password::derive` honors `HashOptions`
+- Added cross-language test vectors, token mutation/fuzz tests, and edge-case coverage
+
 ## 1.0.0 - 2026-08-29
 
 - Initial Rust release
