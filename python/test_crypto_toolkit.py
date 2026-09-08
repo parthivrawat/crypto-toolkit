@@ -71,6 +71,18 @@ def test_password_hash_and_verify_scrypt():
     assert not password.verify("wrong", h)
 
 
+def test_password_hash_and_verify_scrypt_high_cost():
+    # n=65536 requires slightly over 64 MiB, exercising the derived maxmem
+    # path in verify.
+    h = password.hash_with(
+        "user-password", "scrypt",
+        n=65536, r=8, p=1, dklen=32, maxmem=128 * 1024 * 1024,
+    )
+    assert h.startswith("$scrypt$")
+    assert password.verify("user-password", h)
+    assert not password.verify("wrong", h)
+
+
 def test_password_derive():
     salt = b"saltsaltsaltsalt"
     key = password.derive("passphrase", salt=salt, length=32)
@@ -147,7 +159,7 @@ def test_encrypt_string_aes_gcm():
 def test_encrypt_chacha20_poly1305():
     key = b"x" * 32
     ct = encrypt.encrypt("sensitive data", key, algorithm="chacha20-poly1305")
-    pt = decrypt = encrypt.decrypt(ct, key)
+    pt = encrypt.decrypt(ct, key)
     assert pt == b"sensitive data"
 
 

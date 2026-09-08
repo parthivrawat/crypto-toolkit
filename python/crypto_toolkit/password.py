@@ -62,6 +62,10 @@ _ALLOWED = frozenset({"argon2id", "scrypt", "bcrypt", "pbkdf2_sha256"})
 
 _PBALG_ALLOWED = frozenset({"argon2id", "scrypt", "pbkdf2_sha256"})
 
+# Maximum PBKDF2 iteration count accepted during verification, matching the
+# C-int bound enforced by OpenSSL's PKCS5_PBKDF2_HMAC.
+_PBKDF2_MAX_ITERATIONS = 2**31 - 1
+
 
 def _scrypt_available() -> bool:
     try:
@@ -128,6 +132,11 @@ def _resolve_options(
     params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     resolved = _default_options(algorithm)
+    for key in list(options or ()) + list(params or ()):
+        if key not in resolved:
+            raise AlgorithmError(
+                f"Unknown option {key!r} for algorithm {algorithm!r}"
+            )
     if options:
         resolved.update(options)
     if params:
@@ -239,6 +248,8 @@ def verify(password: str, hashed: str) -> bool:
             if not _SCRYPT_AVAILABLE:
                 return False
             parts = hashed.split("$")
+            if len(parts) != 5:
+                raise ValueError("malformed scrypt hash: expected 5 fields")
             params = parts[2]
             salt_b64 = parts[3]
             key_b64 = parts[4]
@@ -246,10 +257,16 @@ def verify(password: str, hashed: str) -> bool:
             ln = int(pairs["ln"])
             r = int(pairs["r"])
             p_cost = int(pairs["p"])
+            if ln < 1 or ln > 63 or r < 1 or p_cost < 1:
+                raise ValueError("malformed scrypt hash: invalid parameters")
             salt = _phc_b64_decode(salt_b64)
             stored = _phc_b64_decode(key_b64)
             if not salt or not stored:
                 return False
+            # Default to the same 64 MiB ceiling used when hashing, expanding
+            # it only when the parsed parameters require more memory so that
+            # higher-cost hashes still verify.
+            maxmem = max(64 * 1024 * 1024, 2 * 128 * r * (2 ** ln + p_cost))
             candidate = hashlib.scrypt(
                 password.encode(),
                 salt=salt,
@@ -257,13 +274,17 @@ def verify(password: str, hashed: str) -> bool:
                 r=r,
                 p=p_cost,
                 dklen=len(stored),
-                maxmem=0,
+                maxmem=maxmem,
             )
             return _hmac.compare_digest(candidate, stored)
 
         if hashed.startswith("$pbkdf2-sha256$"):
             parts = hashed.split("$")
-            rounds = parts[2]
+            if len(parts) != 5:
+                raise ValueError("malformed pbkdf2 hash: expected 5 fields")
+            rounds = int(parts[2])
+            if rounds < 1 or rounds > _PBKDF2_MAX_ITERATIONS:
+                raise ValueError("malformed pbkdf2 hash: invalid iteration count")
             salt_ab64 = parts[3]
             key_ab64 = parts[4]
             salt = _ab64_decode(salt_ab64)
@@ -274,7 +295,7 @@ def verify(password: str, hashed: str) -> bool:
                 "sha256",
                 password.encode(),
                 salt,
-                int(rounds),
+                rounds,
                 dklen=len(stored),
             )
             return _hmac.compare_digest(candidate, stored)
@@ -293,7 +314,7 @@ def verify(password: str, hashed: str) -> bool:
 
 def derive(
     passphrase: str | bytes,
-    salt: bytes,
+    salt: bytes | None,
     length: int = 32,
     algorithm: str = "pbkdf2_sha256",
     options: HashOptions | None = None,
@@ -309,41 +330,41 @@ def derive(
     if length <= 0:
         raise InvalidKeyError("length must be a positive integer")
 
-    merged: dict[str, Any] = dict(options) if options else {}
-    merged.update(params)
-
     p = _to_bytes(passphrase)
     algo = algorithm.lower().replace("-", "_")
+    if algo not in _PBALG_ALLOWED:
+        raise AlgorithmError(f"Unsupported key derivation algorithm: {algorithm}")
+    resolved = _resolve_options(algo, options, params)
 
     if algo == "pbkdf2_sha256":
-        iterations = merged.get("iterations", 100_000)
-        return hashlib.pbkdf2_hmac("sha256", p, salt, iterations, dklen=length)
+        return hashlib.pbkdf2_hmac(
+            "sha256", p, salt, resolved["iterations"], dklen=length
+        )
 
     if algo == "scrypt":
         if not _SCRYPT_AVAILABLE:
             raise MissingDependencyError("scrypt is not available on this platform")
-        n = merged.get("n", 16384)
-        r = merged.get("r", 8)
-        p_cost = merged.get("p", 1)
-        maxmem = merged.get("maxmem", 64 * 1024 * 1024)
-        return hashlib.scrypt(p, salt=salt, n=n, r=r, p=p_cost, dklen=length, maxmem=maxmem)
-
-    if algo == "argon2id":
-        if not _HAS_ARGON2:
-            raise MissingDependencyError(
-                "Argon2id key derivation requires argon2-cffi"
-            )
-        time_cost = merged.get("time_cost", 3)
-        memory_cost = merged.get("memory_cost", 65536)
-        parallelism = merged.get("parallelism", 4)
-        return _Argon2LowLevel.hash_secret_raw(
+        return hashlib.scrypt(
             p,
-            salt,
-            time_cost=time_cost,
-            memory_cost=memory_cost,
-            parallelism=parallelism,
-            hash_len=length,
-            type=_Argon2Type.ID,
+            salt=salt,
+            n=resolved["n"],
+            r=resolved["r"],
+            p=resolved["p"],
+            dklen=length,
+            maxmem=resolved["maxmem"],
         )
 
-    raise AlgorithmError(f"Unsupported key derivation algorithm: {algorithm}")
+    # argon2id
+    if not _HAS_ARGON2:
+        raise MissingDependencyError(
+            "Argon2id key derivation requires argon2-cffi"
+        )
+    return _Argon2LowLevel.hash_secret_raw(
+        p,
+        salt,
+        time_cost=resolved["time_cost"],
+        memory_cost=resolved["memory_cost"],
+        parallelism=resolved["parallelism"],
+        hash_len=length,
+        type=_Argon2Type.ID,
+    )

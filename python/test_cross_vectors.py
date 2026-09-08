@@ -182,10 +182,12 @@ def test_verify_cross_language_pbkdf2_vector():
     assert password.verify("cross-language-test", PBKDF2_VECTOR) is True
 
 
+@pytest.mark.skipif(not HAS_SCRYPT, reason="scrypt not available")
 def test_verify_cross_language_scrypt_vector():
     assert password.verify("cross-language-test", SCRYPT_VECTOR) is True
 
 
 def test_verify_wrong_password_against_vectors():
     assert password.verify("wrong-password", PBKDF2_VECTOR) is False
-    assert password.verify("wrong-password", SCRYPT_VECTOR) is False
+    if HAS_SCRYPT:
+        assert password.verify("wrong-password", SCRYPT_VECTOR) is False
