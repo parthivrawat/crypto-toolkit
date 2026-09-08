@@ -6,17 +6,22 @@ A misuse-resistant, high-level cryptography library with safe defaults, constant
 
 - **Safe hashing**: SHA-256, SHA-384, SHA-512, SHA-3, BLAKE2 (MD5 and SHA-1 rejected)
 - **HMAC**: Constant-time verification
-- **Password hashing**: PBKDF2-SHA256 and scrypt with secure defaults
-- **Key derivation**: PBKDF2 and scrypt
+- **Password hashing**: Argon2id (Node 23.6+), PBKDF2-SHA256, scrypt, and bcrypt (optional) with secure defaults
+- **Key derivation**: PBKDF2, scrypt, and Argon2id (Node 23.6+)
 - **Symmetric encryption**: AES-256-GCM or ChaCha20-Poly1305 with automatic nonce management
-- **Digital signatures**: Ed25519
-- **Zero runtime dependencies** beyond Node.js `crypto`
+- **Digital signatures**: Ed25519 with raw and PEM key import/export
+- **Zero runtime dependencies** beyond Node.js `crypto` (bcrypt requires the optional `bcrypt` package)
 
 ## Installation
 
 ```bash
 npm install crypto-toolkit-ts
 ```
+
+## Optional dependencies
+
+- **bcrypt**: `npm install bcrypt` — required only for `bcrypt` password hashing.
+- **Argon2id**: uses Node.js built-in `crypto.argon2Sync` (available in Node 23.6+). No package is required.
 
 ## Quick Start
 

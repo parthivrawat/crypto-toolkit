@@ -1,9 +1,10 @@
 """Deterministic hashing and HMAC with safe, modern defaults."""
 
+from __future__ import annotations
+
 import hashlib
 import hmac as _hmac
 from pathlib import Path
-from typing import Union
 
 from .exceptions import AlgorithmError
 
@@ -39,17 +40,17 @@ def _normalize(algorithm: str) -> str:
     return _HASHLIB_NAME[name]
 
 
-def _to_bytes(data: Union[str, bytes]) -> bytes:
+def _to_bytes(data: str | bytes) -> bytes:
     return data.encode("utf-8") if isinstance(data, str) else data
 
 
-def string(data: Union[str, bytes], algorithm: str = "sha-256") -> str:
+def string(data: str | bytes, algorithm: str = "sha-256") -> str:
     """Return a safe, deterministic hash of ``data`` as a hex string."""
     digestmod = _normalize(algorithm)
     return hashlib.new(digestmod, _to_bytes(data)).hexdigest()
 
 
-def file(path: Union[str, Path], algorithm: str = "sha-256", block_size: int = 8192) -> str:
+def file(path: str | Path, algorithm: str = "sha-256", block_size: int = 8192) -> str:
     """Return the hash of a file as a hex string."""
     digestmod = _normalize(algorithm)
     h = hashlib.new(digestmod)
@@ -59,14 +60,14 @@ def file(path: Union[str, Path], algorithm: str = "sha-256", block_size: int = 8
     return h.hexdigest()
 
 
-def hmac(key: Union[str, bytes], data: Union[str, bytes], algorithm: str = "sha-256") -> str:
+def hmac(key: str | bytes, data: str | bytes, algorithm: str = "sha-256") -> str:
     """Return an HMAC of ``data`` as a hex string."""
     digestmod = _normalize(algorithm)
     mac = _hmac.new(_to_bytes(key), _to_bytes(data), digestmod)
     return mac.hexdigest()
 
 
-def verify_hmac(mac: str, key: Union[str, bytes], data: Union[str, bytes], algorithm: str = "sha-256") -> bool:
+def verify_hmac(mac: str, key: str | bytes, data: str | bytes, algorithm: str = "sha-256") -> bool:
     """Verify an HMAC in constant time."""
     expected = hmac(key, data, algorithm)
     return _hmac.compare_digest(mac, expected)

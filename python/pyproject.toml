@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "crypto-toolkit-py"
-version = "1.0.1"
+version = "1.1.0"
 description = "Modern Cryptography & Hashing Toolkit - a misuse-resistant, high-level cryptography library for Python"
 readme = "README.md"
 authors = [
@@ -72,14 +72,14 @@ include-package-data = true
 crypto_toolkit = ["py.typed"]
 
 [tool.pytest.ini_options]
-testpaths = ["test_crypto_toolkit.py"]
+testpaths = ["test_crypto_toolkit.py", "test_cross_vectors.py"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v"
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = false
+disallow_untyped_defs = true

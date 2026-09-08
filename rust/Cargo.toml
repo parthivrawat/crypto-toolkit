@@ -1,6 +1,6 @@
 [package]
 name = "modern-crypto-toolkit"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 authors = ["Parthiv Rawat <parthiv05022000@gmail.com>"]
 license = "MIT"
@@ -25,7 +25,8 @@ bcrypt = "0.16"
 aes-gcm = "0.10"
 chacha20poly1305 = "0.10"
 aead = "0.5"
-ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+ed25519-dalek = { version = "2.1", features = ["rand_core", "pkcs8"] }
+pkcs8 = { version = "0.10", features = ["pem"] }
 rand = "0.8"
 subtle = "2.6"
 base64 = "0.21"

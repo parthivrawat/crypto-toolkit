@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math/bits"
 	"strconv"
 	"strings"
 
@@ -24,30 +25,35 @@ var (
 
 	// ErrInvalidHash is returned when a password hash format is invalid.
 	ErrInvalidHash = errors.New("invalid password hash format")
+
+	// ErrInvalidLength is returned when a derived key length is not positive.
+	ErrInvalidLength = errors.New("length must be a positive integer")
 )
 
-// Options controls cost parameters for password hashing.
+// Options controls cost parameters for password hashing and key derivation.
 type Options struct {
-	Iterations int
-	Time       uint32
-	Memory     uint32
-	Threads    uint8
-	DkLen      int
-	N          int
-	R          int
-	P          int
+	Iterations int    // PBKDF2 iteration count
+	Time       uint32 // Argon2 time cost
+	Memory     uint32 // Argon2 memory cost in KiB
+	Threads    uint8  // Argon2 lanes
+	DkLen      int    // Output length in bytes
+	N          int    // scrypt N (power of two)
+	R          int    // scrypt r
+	P          int    // scrypt p
+	Cost       int    // bcrypt cost
 }
 
 func defaultOptions() *Options {
 	return &Options{
-		Iterations: 100000,
-		Time:       1,
+		Iterations: 100_000,
+		Time:       3,
 		Memory:     64 * 1024,
 		Threads:    4,
-		DkLen:      64,
+		DkLen:      32,
 		N:          16384,
 		R:          8,
 		P:          1,
+		Cost:       12,
 	}
 }
 
@@ -80,80 +86,110 @@ func applyDefaults(opts *Options) *Options {
 	if opts.P == 0 {
 		opts.P = d.P
 	}
+	if opts.Cost == 0 {
+		opts.Cost = d.Cost
+	}
 	return opts
+}
+
+func normalizeAlgorithm(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, "_", "-"))
 }
 
 // Hash returns an Argon2id password hash by default.
 func Hash(password string) (string, error) {
-	return HashWith(password, "", nil)
+	return HashWith(password, "argon2id", nil)
 }
 
 // HashWith hashes a password with the chosen algorithm and options.
 func HashWith(password, algorithm string, opts *Options) (string, error) {
-	opts = applyDefaults(opts)
 	if algorithm == "" {
 		algorithm = "argon2id"
 	}
+	algorithm = normalizeAlgorithm(algorithm)
+	opts = applyDefaults(opts)
 
-	switch strings.ToLower(algorithm) {
+	switch algorithm {
 	case "argon2id":
-		salt := make([]byte, 16)
-		if _, err := rand.Read(salt); err != nil {
-			return "", err
-		}
-		key := argon2.IDKey([]byte(password), salt, opts.Time, opts.Memory, opts.Threads, uint32(opts.DkLen))
-		return fmt.Sprintf("argon2id$%d$%d$%d$%s$%s",
-			opts.Time, opts.Memory, opts.Threads,
-			base64.StdEncoding.EncodeToString(salt),
-			base64.StdEncoding.EncodeToString(key)), nil
+		return hashArgon2id(password, opts)
 	case "scrypt":
-		salt := make([]byte, 32)
-		if _, err := rand.Read(salt); err != nil {
-			return "", err
-		}
-		key, err := scrypt.Key([]byte(password), salt, opts.N, opts.R, opts.P, opts.DkLen)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("scrypt$%d$%d$%d$%s$%s",
-			opts.N, opts.R, opts.P,
-			base64.StdEncoding.EncodeToString(salt),
-			base64.StdEncoding.EncodeToString(key)), nil
+		return hashScrypt(password, opts)
+	case "pbkdf2-sha256", "pbkdf2_sha256":
+		return hashPBKDF2(password, opts)
 	case "bcrypt":
-		cost := opts.Iterations
-		if cost == 0 {
-			cost = bcrypt.DefaultCost
-		}
-		h, err := bcrypt.GenerateFromPassword([]byte(password), cost)
-		if err != nil {
-			return "", err
-		}
-		return string(h), nil
-	case "pbkdf2_sha256":
-		salt := make([]byte, 32)
-		if _, err := rand.Read(salt); err != nil {
-			return "", err
-		}
-		key := pbkdf2.Key([]byte(password), salt, opts.Iterations, opts.DkLen, sha256.New)
-		return fmt.Sprintf("pbkdf2_sha256$%d$%s$%s",
-			opts.Iterations,
-			base64.StdEncoding.EncodeToString(salt),
-			base64.StdEncoding.EncodeToString(key)), nil
+		return hashBcrypt(password, opts)
 	default:
 		return "", fmt.Errorf("unsupported password algorithm: %s", algorithm)
 	}
 }
 
+func hashArgon2id(password string, opts *Options) (string, error) {
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		return "", err
+	}
+	key := argon2.IDKey([]byte(password), salt, opts.Time, opts.Memory, opts.Threads, uint32(opts.DkLen))
+	return fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s",
+		opts.Memory, opts.Time, opts.Threads,
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(key)), nil
+}
+
+func hashScrypt(password string, opts *Options) (string, error) {
+	if opts.N <= 0 || (opts.N&(opts.N-1)) != 0 {
+		return "", errors.New("scrypt N must be a positive power of two")
+	}
+	salt := make([]byte, 32)
+	if _, err := rand.Read(salt); err != nil {
+		return "", err
+	}
+	key, err := scrypt.Key([]byte(password), salt, opts.N, opts.R, opts.P, opts.DkLen)
+	if err != nil {
+		return "", err
+	}
+	ln := bits.Len64(uint64(opts.N)) - 1
+	return fmt.Sprintf("$scrypt$ln=%d,r=%d,p=%d$%s$%s",
+		ln, opts.R, opts.P,
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(key)), nil
+}
+
+func hashPBKDF2(password string, opts *Options) (string, error) {
+	salt := make([]byte, 32)
+	if _, err := rand.Read(salt); err != nil {
+		return "", err
+	}
+	key := pbkdf2.Key([]byte(password), salt, opts.Iterations, opts.DkLen, sha256.New)
+	return fmt.Sprintf("$pbkdf2-sha256$%d$%s$%s",
+		opts.Iterations,
+		ab64Encode(salt),
+		ab64Encode(key)), nil
+}
+
+func hashBcrypt(password string, opts *Options) (string, error) {
+	h, err := bcrypt.GenerateFromPassword([]byte(password), opts.Cost)
+	if err != nil {
+		return "", err
+	}
+	return string(h), nil
+}
+
 // Verify checks a password against a stored hash.
 func Verify(password, hashed string) (bool, error) {
 	switch {
-	case strings.HasPrefix(hashed, "argon2id$"):
+	case strings.HasPrefix(hashed, "$argon2id$"):
 		return verifyArgon2id(password, hashed)
-	case strings.HasPrefix(hashed, "scrypt$"):
+	case strings.HasPrefix(hashed, "$scrypt$"):
 		return verifyScrypt(password, hashed)
-	case strings.HasPrefix(hashed, "pbkdf2_sha256$"):
+	case strings.HasPrefix(hashed, "$pbkdf2-sha256$"):
 		return verifyPBKDF2(password, hashed)
-	case strings.HasPrefix(hashed, "$2a$") || strings.HasPrefix(hashed, "$2b$"):
+	case strings.HasPrefix(hashed, "argon2id$"):
+		return verifyLegacyArgon2id(password, hashed)
+	case strings.HasPrefix(hashed, "scrypt$"):
+		return verifyLegacyScrypt(password, hashed)
+	case strings.HasPrefix(hashed, "pbkdf2_sha256$"):
+		return verifyLegacyPBKDF2(password, hashed)
+	case strings.HasPrefix(hashed, "$2a$") || strings.HasPrefix(hashed, "$2b$") || strings.HasPrefix(hashed, "$2y$"):
 		err := bcrypt.CompareHashAndPassword([]byte(hashed), []byte(password))
 		return err == nil, nil
 	default:
@@ -163,30 +199,37 @@ func Verify(password, hashed string) (bool, error) {
 
 func verifyArgon2id(password, hashed string) (bool, error) {
 	parts := strings.Split(hashed, "$")
-	if len(parts) != 6 {
+	if len(parts) != 6 || parts[2] != "v=19" {
 		return false, ErrInvalidHash
 	}
-	time, err := strconv.ParseUint(parts[1], 10, 32)
+	params, err := parseParams(parts[3])
 	if err != nil {
 		return false, err
 	}
-	memory, err := strconv.ParseUint(parts[2], 10, 32)
+	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
 		return false, err
 	}
-	threads, err := strconv.ParseUint(parts[3], 10, 8)
+	stored, err := base64.RawStdEncoding.DecodeString(parts[5])
 	if err != nil {
 		return false, err
 	}
-	salt, err := base64.StdEncoding.DecodeString(parts[4])
+	if len(salt) == 0 || len(stored) == 0 {
+		return false, ErrInvalidHash
+	}
+	memory, err := parseUintParam(params, "m")
 	if err != nil {
 		return false, err
 	}
-	stored, err := base64.StdEncoding.DecodeString(parts[5])
+	time, err := parseUintParam(params, "t")
 	if err != nil {
 		return false, err
 	}
-	key := argon2.IDKey([]byte(password), salt, uint32(time), uint32(memory), uint8(threads), uint32(len(stored)))
+	threads, err := parseUintParam(params, "p")
+	if err != nil {
+		return false, err
+	}
+	key := argon2.IDKey([]byte(password), salt, time, memory, uint8(threads), uint32(len(stored)))
 	if len(key) != len(stored) {
 		return false, nil
 	}
@@ -195,20 +238,85 @@ func verifyArgon2id(password, hashed string) (bool, error) {
 
 func verifyScrypt(password, hashed string) (bool, error) {
 	parts := strings.Split(hashed, "$")
+	if len(parts) != 5 {
+		return false, ErrInvalidHash
+	}
+	params, err := parseParams(parts[2])
+	if err != nil {
+		return false, err
+	}
+	salt, err := base64.RawStdEncoding.DecodeString(parts[3])
+	if err != nil {
+		return false, err
+	}
+	stored, err := base64.RawStdEncoding.DecodeString(parts[4])
+	if err != nil {
+		return false, err
+	}
+	if len(salt) == 0 || len(stored) == 0 {
+		return false, ErrInvalidHash
+	}
+	ln, err := parseIntParam(params, "ln")
+	if err != nil {
+		return false, err
+	}
+	r, err := parseIntParam(params, "r")
+	if err != nil {
+		return false, err
+	}
+	p, err := parseIntParam(params, "p")
+	if err != nil {
+		return false, err
+	}
+	key, err := scrypt.Key([]byte(password), salt, 1<<ln, r, p, len(stored))
+	if err != nil {
+		return false, err
+	}
+	return subtle.ConstantTimeCompare(key, stored) == 1, nil
+}
+
+func verifyPBKDF2(password, hashed string) (bool, error) {
+	parts := strings.Split(hashed, "$")
+	if len(parts) != 5 {
+		return false, ErrInvalidHash
+	}
+	iterations, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return false, err
+	}
+	salt, err := ab64Decode(parts[3])
+	if err != nil {
+		return false, err
+	}
+	stored, err := ab64Decode(parts[4])
+	if err != nil {
+		return false, err
+	}
+	if len(salt) == 0 || len(stored) == 0 {
+		return false, ErrInvalidHash
+	}
+	key := pbkdf2.Key([]byte(password), salt, iterations, len(stored), sha256.New)
+	return subtle.ConstantTimeCompare(key, stored) == 1, nil
+}
+
+// --- legacy hash formats (pre-1.1.0, no leading '$', standard base64) ---
+
+func verifyLegacyArgon2id(password, hashed string) (bool, error) {
+	parts := strings.Split(hashed, "$")
 	if len(parts) != 6 {
 		return false, ErrInvalidHash
 	}
-	N, err := strconv.Atoi(parts[1])
+	time, err := strconv.ParseUint(parts[1], 10, 32)
 	if err != nil {
-		return false, err
+		return false, ErrInvalidHash
 	}
-	R, err := strconv.Atoi(parts[2])
+	memory, err := strconv.ParseUint(parts[2], 10, 32)
 	if err != nil {
-		return false, err
+		return false, ErrInvalidHash
 	}
-	P, err := strconv.Atoi(parts[3])
+	threads, err := strconv.ParseUint(parts[3], 10, 8)
 	if err != nil {
-		return false, err
+		return false, ErrInvalidHash
 	}
 	salt, err := base64.StdEncoding.DecodeString(parts[4])
 	if err != nil {
@@ -218,21 +326,56 @@ func verifyScrypt(password, hashed string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	key, err := scrypt.Key([]byte(password), salt, N, R, P, len(stored))
+	if len(salt) == 0 || len(stored) == 0 {
+		return false, ErrInvalidHash
+	}
+	key := argon2.IDKey([]byte(password), salt, uint32(time), uint32(memory), uint8(threads), uint32(len(stored)))
+	return subtle.ConstantTimeCompare(key, stored) == 1, nil
+}
+
+func verifyLegacyScrypt(password, hashed string) (bool, error) {
+	parts := strings.Split(hashed, "$")
+	if len(parts) != 6 {
+		return false, ErrInvalidHash
+	}
+	n, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return false, ErrInvalidHash
+	}
+	r, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return false, ErrInvalidHash
+	}
+	p, err := strconv.Atoi(parts[3])
+	if err != nil {
+		return false, ErrInvalidHash
+	}
+	salt, err := base64.StdEncoding.DecodeString(parts[4])
+	if err != nil {
+		return false, err
+	}
+	stored, err := base64.StdEncoding.DecodeString(parts[5])
+	if err != nil {
+		return false, err
+	}
+	if len(salt) == 0 || len(stored) == 0 {
+		return false, ErrInvalidHash
+	}
+	key, err := scrypt.Key([]byte(password), salt, n, r, p, len(stored))
 	if err != nil {
 		return false, err
 	}
 	return subtle.ConstantTimeCompare(key, stored) == 1, nil
 }
 
-func verifyPBKDF2(password, hashed string) (bool, error) {
+func verifyLegacyPBKDF2(password, hashed string) (bool, error) {
 	parts := strings.Split(hashed, "$")
 	if len(parts) != 4 {
 		return false, ErrInvalidHash
 	}
 	iterations, err := strconv.Atoi(parts[1])
 	if err != nil {
-		return false, err
+		return false, ErrInvalidHash
 	}
 	salt, err := base64.StdEncoding.DecodeString(parts[2])
 	if err != nil {
@@ -242,32 +385,92 @@ func verifyPBKDF2(password, hashed string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if len(salt) == 0 || len(stored) == 0 {
+		return false, ErrInvalidHash
+	}
 	key := pbkdf2.Key([]byte(password), salt, iterations, len(stored), sha256.New)
 	return subtle.ConstantTimeCompare(key, stored) == 1, nil
 }
 
 // Derive returns a key derived from passphrase and salt using algorithm.
 // If no algorithm is provided, PBKDF2-SHA256 is used.
-func Derive(passphrase string, salt []byte, length int, algorithm ...string) ([]byte, error) {
+func Derive(passphrase string, salt []byte, length int, algorithm string, opts *Options) ([]byte, error) {
 	if len(salt) == 0 {
 		return nil, ErrEmptySalt
 	}
 	if length <= 0 {
-		return nil, errors.New("length must be a positive integer")
+		return nil, ErrInvalidLength
 	}
 
-	algo := "pbkdf2_sha256"
-	if len(algorithm) > 0 && algorithm[0] != "" {
-		algo = algorithm[0]
+	if algorithm == "" {
+		algorithm = "pbkdf2_sha256"
 	}
-	opts := defaultOptions()
+	algorithm = normalizeAlgorithm(algorithm)
+	opts = applyDefaults(opts)
 
-	switch strings.ToLower(algo) {
-	case "pbkdf2_sha256":
+	switch algorithm {
+	case "pbkdf2-sha256", "pbkdf2_sha256":
 		return pbkdf2.Key([]byte(passphrase), salt, opts.Iterations, length, sha256.New), nil
 	case "scrypt":
 		return scrypt.Key([]byte(passphrase), salt, opts.N, opts.R, opts.P, length)
+	case "argon2id":
+		return argon2.IDKey([]byte(passphrase), salt, opts.Time, opts.Memory, opts.Threads, uint32(length)), nil
 	default:
-		return nil, fmt.Errorf("unsupported key derivation algorithm: %s", algo)
+		return nil, fmt.Errorf("unsupported key derivation algorithm: %s", algorithm)
 	}
 }
+
+// --- helpers ---
+
+func ab64Encode(data []byte) string {
+	s := base64.StdEncoding.EncodeToString(data)
+	s = strings.ReplaceAll(s, "+", ".")
+	return strings.TrimRight(s, "=")
+}
+
+func ab64Decode(text string) ([]byte, error) {
+	s := strings.ReplaceAll(text, ".", "+")
+	if m := len(s) % 4; m != 0 {
+		s += strings.Repeat("=", 4-m)
+	}
+	return base64.StdEncoding.DecodeString(s)
+}
+
+func parseParams(s string) (map[string]string, error) {
+	pairs := strings.Split(s, ",")
+	params := make(map[string]string, len(pairs))
+	for _, pair := range pairs {
+		kv := strings.SplitN(pair, "=", 2)
+		if len(kv) != 2 {
+			return nil, ErrInvalidHash
+		}
+		params[kv[0]] = kv[1]
+	}
+	return params, nil
+}
+
+func parseUintParam(params map[string]string, key string) (uint32, error) {
+	v, ok := params[key]
+	if !ok {
+		return 0, ErrInvalidHash
+	}
+	n, err := strconv.ParseUint(v, 10, 32)
+	if err != nil {
+		return 0, ErrInvalidHash
+	}
+	return uint32(n), nil
+}
+
+func parseIntParam(params map[string]string, key string) (int, error) {
+	v, ok := params[key]
+	if !ok {
+		return 0, ErrInvalidHash
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, ErrInvalidHash
+	}
+	return n, nil
+}
+
+

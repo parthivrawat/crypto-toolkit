@@ -43,7 +43,8 @@ func normalize(name string) string {
 	return strings.ToLower(strings.ReplaceAll(name, "_", "-"))
 }
 
-func newHash(name string) (stdhash.Hash, error) {
+// newHashFunc validates the algorithm name and returns its hash constructor.
+func newHashFunc(name string) (func() stdhash.Hash, error) {
 	name = normalize(name)
 	if name == "md5" || name == "sha-1" || name == "sha1" {
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedAlgorithm, name)
@@ -51,6 +52,14 @@ func newHash(name string) (stdhash.Hash, error) {
 	f, ok := allowed[name]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedAlgorithm, name)
+	}
+	return f, nil
+}
+
+func newHash(name string) (stdhash.Hash, error) {
+	f, err := newHashFunc(name)
+	if err != nil {
+		return nil, err
 	}
 	return f(), nil
 }
@@ -85,10 +94,9 @@ func File(path string, algorithm string) (string, error) {
 
 // HMAC returns a hex-encoded HMAC of data using key and algorithm.
 func HMAC(key, data, algorithm string) (string, error) {
-	name := normalize(algorithm)
-	f, ok := allowed[name]
-	if !ok {
-		return "", fmt.Errorf("%w: %s", ErrUnsupportedAlgorithm, algorithm)
+	f, err := newHashFunc(algorithm)
+	if err != nil {
+		return "", err
 	}
 	mac := hmac.New(f, []byte(key))
 	mac.Write([]byte(data))

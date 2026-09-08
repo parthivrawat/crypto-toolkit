@@ -7,7 +7,7 @@ import { AlgorithmError, DecryptionError, InvalidKeyError } from './errors';
 
 export { AlgorithmError, DecryptionError, InvalidKeyError };
 
-const VERSION = 1;
+const VERSION = 2;
 
 interface AlgorithmSpec {
   id: number;
@@ -32,22 +32,27 @@ function toBuffer(data: string | Buffer | Uint8Array): Buffer {
   return Buffer.from(data, 'utf-8');
 }
 
+function normalizeAlgorithm(algorithm: string): string {
+  return algorithm.toLowerCase().replace(/_/g, '-');
+}
+
 function getSpec(algorithm: string): AlgorithmSpec {
-  const spec = ALGORITHMS[algorithm];
+  const name = normalizeAlgorithm(algorithm);
+  const spec = ALGORITHMS[name];
   if (!spec) throw new AlgorithmError(`Unsupported cipher: ${algorithm}`);
   return spec;
 }
 
-function makeCipher(algorithm: string, key: Buffer, iv: Buffer) {
-  return crypto.createCipheriv(algorithm, key, iv) as crypto.CipherGCM;
+function buildAAD(version: number, algoId: number, aad: Buffer, iv: Buffer): Buffer {
+  const aadLen = Buffer.alloc(2);
+  aadLen.writeUInt16BE(aad.length, 0);
+  return Buffer.concat([Buffer.from([version, algoId]), aadLen, aad, iv]);
 }
 
-/**
- * Encrypt `data` with an AEAD cipher using a versioned header.
- */
-export function symmetric(
+export function encrypt(
   data: string | Buffer | Uint8Array,
   key: Buffer,
+  aad: Buffer | null = null,
   algorithm = 'aes-256-gcm'
 ): Buffer {
   const spec = getSpec(algorithm);
@@ -55,23 +60,100 @@ export function symmetric(
     throw new InvalidKeyError(`${algorithm} requires a ${spec.keyLen}-byte key`);
   }
   const iv = crypto.randomBytes(spec.ivLen);
-  const cipher = makeCipher(spec.cipherName, key, iv);
+  const cipher = crypto.createCipheriv(spec.cipherName, key, iv) as crypto.CipherGCM;
+  const userAad = aad ?? Buffer.alloc(0);
+  const aadForCipher = buildAAD(VERSION, spec.id, userAad, iv);
+  cipher.setAAD(aadForCipher);
   const ciphertext = Buffer.concat([cipher.update(toBuffer(data)), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return Buffer.concat([Buffer.from([VERSION, spec.id]), iv, ciphertext, tag]);
+  return Buffer.concat([Buffer.from([VERSION, spec.id]), aadForCipher.subarray(2, 4), userAad, iv, ciphertext, tag]);
 }
 
-/**
- * Decrypt and authenticate a token produced by `symmetric`.
- */
-export function decrypt(
-  token: Buffer,
+export function encryptString(
+  plaintext: string,
   key: Buffer,
-  encoding: BufferEncoding | null = 'utf-8'
-): string | Buffer {
+  aad: Buffer | null = null,
+  algorithm = 'aes-256-gcm'
+): Buffer {
+  return encrypt(Buffer.from(plaintext, 'utf-8'), key, aad, algorithm);
+}
+
+export function decrypt(token: Buffer, key: Buffer, aad: Buffer | null = null): Buffer {
   if (token.length < 2) throw new DecryptionError('Ciphertext too short');
   const version = token[0];
-  if (version !== VERSION) throw new DecryptionError(`Unsupported ciphertext version: ${version}`);
+  if (version === VERSION) return decryptV2(token, key, aad);
+  if (version === 1) {
+    if (aad && aad.length > 0) {
+      throw new DecryptionError('v1 ciphertext does not support AAD');
+    }
+    return decryptV1(token, key);
+  }
+  throw new DecryptionError(`Unsupported ciphertext version: ${version}`);
+}
+
+export function decryptString(
+  token: Buffer,
+  key: Buffer,
+  aad: Buffer | null = null,
+  encoding: BufferEncoding = 'utf-8'
+): string {
+  const plaintext = decrypt(token, key, aad);
+  if (encoding === 'utf-8' || encoding === 'utf8') {
+    // Strict decoding: Buffer.toString('utf-8') silently substitutes U+FFFD
+    // for invalid bytes, which can mask corrupted or binary plaintext that
+    // legitimately passed authentication. TextDecoder with fatal:true rejects.
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(plaintext);
+    } catch {
+      throw new Error('Plaintext is not valid utf-8 data');
+    }
+  }
+  try {
+    return plaintext.toString(encoding);
+  } catch {
+    throw new Error(`Plaintext is not valid ${encoding} data`);
+  }
+}
+
+function decryptV2(token: Buffer, key: Buffer, aad: Buffer | null): Buffer {
+  if (token.length < 4) throw new DecryptionError('Ciphertext too short');
+  const algoId = token[1];
+  const aadLen = token.readUInt16BE(2);
+  const aadStart = 4;
+  const aadEnd = aadStart + aadLen;
+  if (token.length < aadEnd) throw new DecryptionError('Ciphertext too short');
+
+  const storedAad = token.subarray(aadStart, aadEnd);
+  const expectedAad = aad ?? Buffer.alloc(0);
+  if (!storedAad.equals(expectedAad)) {
+    throw new DecryptionError('Additional authenticated data does not match');
+  }
+
+  const name = ID_TO_ALGO[algoId];
+  if (!name) throw new DecryptionError(`Unknown algorithm id: ${algoId}`);
+  const spec = getSpec(name);
+  if (key.length !== spec.keyLen) {
+    throw new InvalidKeyError(`${name} requires a ${spec.keyLen}-byte key`);
+  }
+  if (token.length < aadEnd + spec.ivLen + 16) throw new DecryptionError('Ciphertext too short');
+
+  const iv = token.subarray(aadEnd, aadEnd + spec.ivLen);
+  const rest = token.subarray(aadEnd + spec.ivLen);
+  const tag = rest.subarray(-16);
+  const ciphertext = rest.subarray(0, -16);
+
+  const aadForCipher = buildAAD(VERSION, algoId, storedAad, iv);
+  const decipher = crypto.createDecipheriv(spec.cipherName, key, iv) as crypto.DecipherGCM;
+  decipher.setAuthTag(tag);
+  decipher.setAAD(aadForCipher);
+  try {
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  } catch {
+    throw new DecryptionError('Decryption or authentication failed');
+  }
+}
+
+function decryptV1(token: Buffer, key: Buffer): Buffer {
   const algoId = token[1];
   const name = ID_TO_ALGO[algoId];
   if (!name) throw new DecryptionError(`Unknown algorithm id: ${algoId}`);
@@ -79,9 +161,7 @@ export function decrypt(
   if (key.length !== spec.keyLen) {
     throw new InvalidKeyError(`${name} requires a ${spec.keyLen}-byte key`);
   }
-  if (token.length < 2 + spec.ivLen + 16) {
-    throw new DecryptionError('Ciphertext too short');
-  }
+  if (token.length < 2 + spec.ivLen + 16) throw new DecryptionError('Ciphertext too short');
   const iv = token.subarray(2, 2 + spec.ivLen);
   const rest = token.subarray(2 + spec.ivLen);
   const tag = rest.subarray(-16);
@@ -89,19 +169,17 @@ export function decrypt(
 
   const decipher = crypto.createDecipheriv(spec.cipherName, key, iv) as crypto.DecipherGCM;
   decipher.setAuthTag(tag);
-  let plaintext: Buffer;
   try {
-    plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-  } catch (err) {
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  } catch {
     throw new DecryptionError('Decryption or authentication failed');
   }
+}
 
-  if (encoding) {
-    try {
-      return plaintext.toString(encoding);
-    } catch {
-      return plaintext;
-    }
-  }
-  return plaintext;
+export function symmetric(
+  data: string | Buffer | Uint8Array,
+  key: Buffer,
+  algorithm = 'aes-256-gcm'
+): Buffer {
+  return encrypt(data, key, null, algorithm);
 }

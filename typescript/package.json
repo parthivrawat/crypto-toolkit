@@ -1,6 +1,6 @@
 {
   "name": "crypto-toolkit-ts",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Modern Cryptography & Hashing Toolkit - a misuse-resistant, high-level cryptography library for TypeScript/Node.js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,7 +19,7 @@
     "lint": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\"",
     "prepublishOnly": "npm run build && npm test",
-    "clean": "rm -rf dist"
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\""
   },
   "keywords": [
     "crypto",
@@ -43,10 +43,10 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@vitest/coverage-v8": "^1.6.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "tsx": "^4.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^1.6.0"
+    "vitest": "^4.1.11"
   },
   "files": [
     "dist",
@@ -64,6 +64,9 @@
     "url": "https://github.com/parthivrawat/crypto-toolkit/issues"
   },
   "homepage": "https://github.com/parthivrawat/crypto-toolkit/tree/main/typescript#readme",
+  "optionalDependencies": {
+    "bcrypt": "^6.0.0"
+  },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   }

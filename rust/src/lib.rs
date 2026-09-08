@@ -24,10 +24,10 @@
 //! assert!(password::verify("user-password", &ph).unwrap());
 //!
 //! let salt = b"saltsaltsaltsalt";
-//! let key = password::derive("passphrase", salt, 32, Some("pbkdf2_sha256")).unwrap();
+//! let key = password::derive("passphrase", salt, 32, Some("pbkdf2_sha256"), None).unwrap();
 //!
-//! let ciphertext = encrypt::symmetric("sensitive data", &key).unwrap();
-//! let plaintext = encrypt::decrypt_string(&ciphertext, &key).unwrap();
+//! let ciphertext = encrypt::encrypt_string("sensitive data", &key, None).unwrap();
+//! let plaintext = encrypt::decrypt_string(&ciphertext, &key, None).unwrap();
 //! assert_eq!(plaintext, "sensitive data");
 //!
 //! let (sk, pk) = sign::generate_keypair().unwrap();
