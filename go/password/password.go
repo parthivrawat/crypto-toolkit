@@ -183,6 +183,12 @@ func Verify(password, hashed string) (bool, error) {
 		return verifyScrypt(password, hashed)
 	case strings.HasPrefix(hashed, "$pbkdf2-sha256$"):
 		return verifyPBKDF2(password, hashed)
+	case strings.HasPrefix(hashed, "argon2id$"):
+		return verifyLegacyArgon2id(password, hashed)
+	case strings.HasPrefix(hashed, "scrypt$"):
+		return verifyLegacyScrypt(password, hashed)
+	case strings.HasPrefix(hashed, "pbkdf2_sha256$"):
+		return verifyLegacyPBKDF2(password, hashed)
 	case strings.HasPrefix(hashed, "$2a$") || strings.HasPrefix(hashed, "$2b$") || strings.HasPrefix(hashed, "$2y$"):
 		err := bcrypt.CompareHashAndPassword([]byte(hashed), []byte(password))
 		return err == nil, nil
@@ -193,18 +199,18 @@ func Verify(password, hashed string) (bool, error) {
 
 func verifyArgon2id(password, hashed string) (bool, error) {
 	parts := strings.Split(hashed, "$")
-	if len(parts) != 5 {
+	if len(parts) != 6 || parts[2] != "v=19" {
 		return false, ErrInvalidHash
 	}
-	params, err := parseParams(parts[2])
+	params, err := parseParams(parts[3])
 	if err != nil {
 		return false, err
 	}
-	salt, err := base64.RawStdEncoding.DecodeString(parts[3])
+	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
 		return false, err
 	}
-	stored, err := base64.RawStdEncoding.DecodeString(parts[4])
+	stored, err := base64.RawStdEncoding.DecodeString(parts[5])
 	if err != nil {
 		return false, err
 	}
@@ -283,6 +289,99 @@ func verifyPBKDF2(password, hashed string) (bool, error) {
 		return false, err
 	}
 	stored, err := ab64Decode(parts[4])
+	if err != nil {
+		return false, err
+	}
+	if len(salt) == 0 || len(stored) == 0 {
+		return false, ErrInvalidHash
+	}
+	key := pbkdf2.Key([]byte(password), salt, iterations, len(stored), sha256.New)
+	return subtle.ConstantTimeCompare(key, stored) == 1, nil
+}
+
+// --- legacy hash formats (pre-1.1.0, no leading '$', standard base64) ---
+
+func verifyLegacyArgon2id(password, hashed string) (bool, error) {
+	parts := strings.Split(hashed, "$")
+	if len(parts) != 6 {
+		return false, ErrInvalidHash
+	}
+	time, err := strconv.ParseUint(parts[1], 10, 32)
+	if err != nil {
+		return false, ErrInvalidHash
+	}
+	memory, err := strconv.ParseUint(parts[2], 10, 32)
+	if err != nil {
+		return false, ErrInvalidHash
+	}
+	threads, err := strconv.ParseUint(parts[3], 10, 8)
+	if err != nil {
+		return false, ErrInvalidHash
+	}
+	salt, err := base64.StdEncoding.DecodeString(parts[4])
+	if err != nil {
+		return false, err
+	}
+	stored, err := base64.StdEncoding.DecodeString(parts[5])
+	if err != nil {
+		return false, err
+	}
+	if len(salt) == 0 || len(stored) == 0 {
+		return false, ErrInvalidHash
+	}
+	key := argon2.IDKey([]byte(password), salt, uint32(time), uint32(memory), uint8(threads), uint32(len(stored)))
+	return subtle.ConstantTimeCompare(key, stored) == 1, nil
+}
+
+func verifyLegacyScrypt(password, hashed string) (bool, error) {
+	parts := strings.Split(hashed, "$")
+	if len(parts) != 6 {
+		return false, ErrInvalidHash
+	}
+	n, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return false, ErrInvalidHash
+	}
+	r, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return false, ErrInvalidHash
+	}
+	p, err := strconv.Atoi(parts[3])
+	if err != nil {
+		return false, ErrInvalidHash
+	}
+	salt, err := base64.StdEncoding.DecodeString(parts[4])
+	if err != nil {
+		return false, err
+	}
+	stored, err := base64.StdEncoding.DecodeString(parts[5])
+	if err != nil {
+		return false, err
+	}
+	if len(salt) == 0 || len(stored) == 0 {
+		return false, ErrInvalidHash
+	}
+	key, err := scrypt.Key([]byte(password), salt, n, r, p, len(stored))
+	if err != nil {
+		return false, err
+	}
+	return subtle.ConstantTimeCompare(key, stored) == 1, nil
+}
+
+func verifyLegacyPBKDF2(password, hashed string) (bool, error) {
+	parts := strings.Split(hashed, "$")
+	if len(parts) != 4 {
+		return false, ErrInvalidHash
+	}
+	iterations, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return false, ErrInvalidHash
+	}
+	salt, err := base64.StdEncoding.DecodeString(parts[2])
+	if err != nil {
+		return false, err
+	}
+	stored, err := base64.StdEncoding.DecodeString(parts[3])
 	if err != nil {
 		return false, err
 	}

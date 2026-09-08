@@ -67,6 +67,13 @@ var ErrInvalidKey = errors.New("invalid key length")
 // ErrUnsupportedAlgorithm is returned when an unknown algorithm is requested.
 var ErrUnsupportedAlgorithm = errors.New("unsupported or insecure algorithm")
 
+// ErrInvalidAAD is returned when additional authenticated data exceeds the
+// maximum length encodable in the token header.
+var ErrInvalidAAD = errors.New("invalid additional authenticated data")
+
+// maxAADLen is the largest AAD encodable in the token's u16 length field.
+const maxAADLen = 0xFFFF
+
 func getSpec(name string) (algorithmSpec, error) {
 	name = normalizeAlgorithm(name)
 	spec, ok := algorithms[name]
@@ -115,6 +122,9 @@ func EncryptWith(plaintext, key, aad []byte, algorithm string) ([]byte, error) {
 	}
 	if len(key) != spec.keyLen {
 		return nil, fmt.Errorf("%w: %s requires a %d-byte key", ErrInvalidKey, algorithm, spec.keyLen)
+	}
+	if len(aad) > maxAADLen {
+		return nil, fmt.Errorf("%w: length %d exceeds maximum of %d bytes", ErrInvalidAAD, len(aad), maxAADLen)
 	}
 
 	nonce := make([]byte, spec.nonceLen)

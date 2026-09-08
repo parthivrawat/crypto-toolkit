@@ -40,6 +40,24 @@ func TestHashWithScrypt(t *testing.T) {
 	}
 }
 
+func TestHashRoundTrip(t *testing.T) {
+	h, err := Hash("user-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(h, "$argon2id$v=19$") {
+		t.Fatalf("unexpected hash prefix: %s", h)
+	}
+	ok, err := Verify("user-password", h)
+	if err != nil || !ok {
+		t.Errorf("Verify failed: ok=%v err=%v", ok, err)
+	}
+	ok, _ = Verify("wrong", h)
+	if ok {
+		t.Error("Verify should fail for wrong password")
+	}
+}
+
 func TestVerifyBcrypt2y(t *testing.T) {
 	h, err := HashWith("user-password", "bcrypt", &Options{Cost: 10})
 	if err != nil {
