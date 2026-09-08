@@ -89,6 +89,13 @@ pub fn encrypt_with(
     }
 
     let user_aad = aad.unwrap_or(&[]);
+    if user_aad.len() > u16::MAX as usize {
+        return Err(Error::InvalidParameter(format!(
+            "additional authenticated data length {} exceeds maximum of {} bytes",
+            user_aad.len(),
+            u16::MAX
+        )));
+    }
     let (nonce, sealed) = match algorithm {
         Algorithm::Aes256Gcm => {
             let cipher = Aes256Gcm::new_from_slice(key)
