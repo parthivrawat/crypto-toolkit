@@ -1,12 +1,14 @@
 """Password hashing, verification, and key derivation with safe defaults."""
 
+from __future__ import annotations
+
 import base64
 import hashlib
 import hmac as _hmac
 import logging
 import math
 import secrets
-from typing import Any, Dict, Optional, TypedDict, Union
+from typing import Any, TypedDict
 
 from .exceptions import AlgorithmError, InvalidKeyError, MissingDependencyError
 
@@ -40,19 +42,19 @@ class HashOptions(TypedDict, total=False):
     rounds: int
 
 try:
+    import argon2.low_level as _Argon2LowLevel
     from argon2 import PasswordHasher as _Argon2Hasher
     from argon2 import Type as _Argon2Type
-    import argon2.low_level as _Argon2LowLevel
 
     _HAS_ARGON2 = True
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     _HAS_ARGON2 = False
 
 try:
     import bcrypt as _bcrypt
 
     _HAS_BCRYPT = True
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     _HAS_BCRYPT = False
 
 _ALLOWED = frozenset({"argon2id", "scrypt", "bcrypt", "pbkdf2_sha256"})
@@ -65,7 +67,8 @@ def _scrypt_available() -> bool:
     try:
         hashlib.scrypt(b"", salt=b"", n=2, r=1, p=1, dklen=1, maxmem=1024)
         return True
-    except Exception:
+    except (AttributeError, ValueError, TypeError):
+        # scrypt is missing from hashlib or the OpenSSL backend lacks it.
         return False
 
 
@@ -78,7 +81,7 @@ _DEFAULT = (
 )
 
 
-def _to_bytes(value: Union[str, bytes]) -> bytes:
+def _to_bytes(value: str | bytes) -> bytes:
     return value.encode("utf-8") if isinstance(value, str) else value
 
 
@@ -106,7 +109,7 @@ def _ab64_decode(text: str) -> bytes:
     return base64.b64decode(s + "=" * pad, validate=True)
 
 
-def _default_options(algorithm: str) -> Dict[str, Any]:
+def _default_options(algorithm: str) -> dict[str, Any]:
     algorithm = algorithm.lower()
     if algorithm == "argon2id":
         return {"time_cost": 3, "memory_cost": 65536, "parallelism": 4, "dklen": 32}
@@ -121,9 +124,9 @@ def _default_options(algorithm: str) -> Dict[str, Any]:
 
 def _resolve_options(
     algorithm: str,
-    options: Optional[HashOptions] = None,
-    params: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    options: HashOptions | None = None,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     resolved = _default_options(algorithm)
     if options:
         resolved.update(options)
@@ -132,14 +135,14 @@ def _resolve_options(
     return resolved
 
 
-def _normalize(algorithm: Optional[str]) -> str:
+def _normalize(algorithm: str | None) -> str:
     return (algorithm or _DEFAULT).lower().replace("-", "_")
 
 
 def hash(
     password: str,
-    algorithm: Optional[str] = None,
-    options: Optional[HashOptions] = None,
+    algorithm: str | None = None,
+    options: HashOptions | None = None,
     **params: Any,
 ) -> str:
     """Hash a password with the strongest available algorithm by default.
@@ -156,14 +159,14 @@ def hash(
 def hash_with(
     password: str,
     algorithm: str,
-    options: Optional[HashOptions] = None,
+    options: HashOptions | None = None,
     **params: Any,
 ) -> str:
     """Explicitly hash a password with the chosen algorithm."""
     return hash(password, algorithm, options, **params)
 
 
-def _hash_algorithm(password: str, algorithm: str, options: Dict[str, Any]) -> str:
+def _hash_algorithm(password: str, algorithm: str, options: dict[str, Any]) -> str:
     p = _to_bytes(password)
 
     if algorithm == "argon2id":
@@ -289,11 +292,11 @@ def verify(password: str, hashed: str) -> bool:
 
 
 def derive(
-    passphrase: Union[str, bytes],
+    passphrase: str | bytes,
     salt: bytes,
     length: int = 32,
     algorithm: str = "pbkdf2_sha256",
-    options: Optional[HashOptions] = None,
+    options: HashOptions | None = None,
     **params: Any,
 ) -> bytes:
     """Derive a key from a passphrase and salt.
@@ -306,7 +309,7 @@ def derive(
     if length <= 0:
         raise InvalidKeyError("length must be a positive integer")
 
-    merged: Dict[str, Any] = dict(options) if options else {}
+    merged: dict[str, Any] = dict(options) if options else {}
     merged.update(params)
 
     p = _to_bytes(passphrase)

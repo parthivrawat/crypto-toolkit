@@ -1,8 +1,13 @@
 """Digital signatures (Ed25519)."""
 
-from typing import Tuple, Union
+from __future__ import annotations
 
-from .exceptions import AlgorithmError, InvalidKeyError, MissingDependencyError, SignatureError
+from .exceptions import (
+    AlgorithmError,
+    InvalidKeyError,
+    MissingDependencyError,
+    SignatureError,
+)
 
 try:
     from cryptography.exceptions import InvalidSignature
@@ -10,7 +15,7 @@ try:
     from cryptography.hazmat.primitives.asymmetric import ed25519 as _ed25519
 
     _HAS_CRYPTOGRAPHY = True
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     _HAS_CRYPTOGRAPHY = False
 
 
@@ -21,11 +26,11 @@ def _require_crypto() -> None:
         )
 
 
-def _to_bytes(value: Union[str, bytes]) -> bytes:
+def _to_bytes(value: str | bytes) -> bytes:
     return value.encode("utf-8") if isinstance(value, str) else value
 
 
-def generate_keypair(algorithm: str = "ed25519") -> Tuple[bytes, bytes]:
+def generate_keypair(algorithm: str = "ed25519") -> tuple[bytes, bytes]:
     """Generate a 32-byte private/public key pair for the requested algorithm."""
     _require_crypto()
     if algorithm != "ed25519":
@@ -45,7 +50,7 @@ def generate_keypair(algorithm: str = "ed25519") -> Tuple[bytes, bytes]:
     return private_bytes, public_bytes
 
 
-def ed25519(message: Union[str, bytes], private_key: bytes) -> bytes:
+def ed25519(message: str | bytes, private_key: bytes) -> bytes:
     """Sign ``message`` with an Ed25519 private key."""
     _require_crypto()
     if len(private_key) != 32:
@@ -55,14 +60,14 @@ def ed25519(message: Union[str, bytes], private_key: bytes) -> bytes:
     return sk.sign(_to_bytes(message))
 
 
-def sign(message: Union[str, bytes], private_key: bytes) -> bytes:
+def sign(message: str | bytes, private_key: bytes) -> bytes:
     """Alias for ``ed25519``."""
     return ed25519(message, private_key)
 
 
 def verify(
     signature: bytes,
-    message: Union[str, bytes],
+    message: str | bytes,
     public_key: bytes,
     algorithm: str = "ed25519",
 ) -> bool:

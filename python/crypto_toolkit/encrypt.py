@@ -1,22 +1,28 @@
 """Symmetric AEAD encryption with safe, modern defaults."""
 
+from __future__ import annotations
+
 import secrets
 import struct
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
-from .exceptions import AlgorithmError, DecryptionError, InvalidKeyError, MissingDependencyError
+from .exceptions import (
+    AlgorithmError,
+    DecryptionError,
+    InvalidKeyError,
+    MissingDependencyError,
+)
 
 try:
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
 
     _HAS_CRYPTOGRAPHY = True
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     _HAS_CRYPTOGRAPHY = False
 
 _VERSION = 2
 
-_ALGORITHMS: Dict[str, Dict[str, Any]] = {}
+_ALGORITHMS: dict[str, dict[str, Any]] = {}
 if _HAS_CRYPTOGRAPHY:
     _ALGORITHMS = {
         "aes-256-gcm": {
@@ -49,7 +55,7 @@ def _normalize_algorithm(algorithm: str) -> str:
     return algorithm.lower().replace("_", "-")
 
 
-def _load_algorithm(algorithm: str) -> Dict[str, Any]:
+def _load_algorithm(algorithm: str) -> dict[str, Any]:
     name = _normalize_algorithm(algorithm)
     try:
         return _ALGORITHMS[name]
@@ -64,7 +70,7 @@ def _make_cipher(algorithm: str, key: bytes) -> Any:
     return spec["cipher_cls"](key)
 
 
-def _build_aad(version: int, algorithm_id: int, aad: Optional[bytes], nonce: bytes) -> bytes:
+def _build_aad(version: int, algorithm_id: int, aad: bytes | None, nonce: bytes) -> bytes:
     aad = aad or b""
     return (
         bytes([version, algorithm_id])
@@ -74,14 +80,14 @@ def _build_aad(version: int, algorithm_id: int, aad: Optional[bytes], nonce: byt
     )
 
 
-def _to_bytes(data: Union[str, bytes]) -> bytes:
+def _to_bytes(data: str | bytes) -> bytes:
     return data.encode("utf-8") if isinstance(data, str) else data
 
 
 def encrypt(
-    data: Union[str, bytes],
+    data: str | bytes,
     key: bytes,
-    aad: Optional[bytes] = None,
+    aad: bytes | None = None,
     algorithm: str = "aes-256-gcm",
 ) -> bytes:
     """Encrypt ``data`` with an AEAD cipher using a versioned v2 header."""
@@ -105,7 +111,7 @@ def encrypt(
 def decrypt(
     token: bytes,
     key: bytes,
-    aad: Optional[bytes] = None,
+    aad: bytes | None = None,
 ) -> bytes:
     """Decrypt and authenticate a token produced by ``encrypt``."""
     _require_crypto()
@@ -122,7 +128,7 @@ def decrypt(
     raise DecryptionError(f"Unsupported ciphertext version: {version}")
 
 
-def _decrypt_v2(token: bytes, key: bytes, aad: Optional[bytes]) -> bytes:
+def _decrypt_v2(token: bytes, key: bytes, aad: bytes | None) -> bytes:
     if len(token) < 4:
         raise DecryptionError("Ciphertext too short")
 
@@ -163,7 +169,7 @@ def _decrypt_v2(token: bytes, key: bytes, aad: Optional[bytes]) -> bytes:
         raise DecryptionError("Decryption or authentication failed") from exc
 
 
-def _decrypt_v1(token: bytes, key: bytes, aad: Optional[bytes]) -> bytes:
+def _decrypt_v1(token: bytes, key: bytes, aad: bytes | None) -> bytes:
     if aad is not None and aad != b"":
         raise DecryptionError("v1 ciphertext does not support additional authenticated data")
 
@@ -192,7 +198,7 @@ def _decrypt_v1(token: bytes, key: bytes, aad: Optional[bytes]) -> bytes:
 def encrypt_string(
     plaintext: str,
     key: bytes,
-    aad: Optional[bytes] = None,
+    aad: bytes | None = None,
     algorithm: str = "aes-256-gcm",
 ) -> bytes:
     """Encrypt a UTF-8 string and return a v2 token."""
@@ -202,7 +208,7 @@ def encrypt_string(
 def decrypt_string(
     token: bytes,
     key: bytes,
-    aad: Optional[bytes] = None,
+    aad: bytes | None = None,
     encoding: str = "utf-8",
 ) -> str:
     """Decrypt a v2 token and decode the plaintext as a string."""
@@ -214,7 +220,7 @@ def decrypt_string(
 
 
 def symmetric(
-    data: Union[str, bytes],
+    data: str | bytes,
     key: bytes,
     algorithm: str = "aes-256-gcm",
 ) -> bytes:
