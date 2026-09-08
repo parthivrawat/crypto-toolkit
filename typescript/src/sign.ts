@@ -189,22 +189,22 @@ export function publicKeyToPem(publicKey: Buffer): string {
   return key.export({ type: 'spki', format: 'pem' }) as string;
 }
 
-/** Alias for `privateKeyFromPem`. */
-export function serializePrivateKey(pem: string): Buffer {
-  return privateKeyFromPem(pem);
-}
-
-/** Alias for `publicKeyFromPem`. */
-export function serializePublicKey(pem: string): Buffer {
-  return publicKeyFromPem(pem);
-}
-
 /** Alias for `privateKeyToPem`. */
-export function loadPrivateKey(privateKey: Buffer, publicKey?: Buffer): string {
+export function serializePrivateKey(privateKey: Buffer, publicKey?: Buffer): string {
   return privateKeyToPem(privateKey, publicKey);
 }
 
 /** Alias for `publicKeyToPem`. */
-export function loadPublicKey(publicKey: Buffer): string {
+export function serializePublicKey(publicKey: Buffer): string {
   return publicKeyToPem(publicKey);
+}
+
+/** Alias for `privateKeyFromPem`. */
+export function loadPrivateKey(pem: string): Buffer {
+  return privateKeyFromPem(pem);
+}
+
+/** Alias for `publicKeyFromPem`. */
+export function loadPublicKey(pem: string): Buffer {
+  return publicKeyFromPem(pem);
 }

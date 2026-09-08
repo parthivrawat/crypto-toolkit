@@ -2,6 +2,12 @@
 
 ## 1.1.0 - 2026-09-08
 
+- **Breaking:** `encrypt.decrypt` now returns a `Buffer` and takes `aad` instead
+  of its fourth `encoding` parameter
+- **Breaking:** new tokens use ciphertext version 2 with an AAD-bound header and
+  are incompatible with version-1-only readers
+- Added public APIs `encrypt.encrypt`, `encrypt.encryptString`, and
+  `encrypt.decryptString`
 - `password.hash` defaults to Argon2id when `crypto.argon2Sync` is available (Node >= 23.6)
 - `password.verify` rejects hashes with empty salt/digest fields
 - `encrypt.decryptString` uses strict UTF-8 decoding (invalid bytes now throw)
